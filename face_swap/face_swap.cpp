@@ -228,6 +228,8 @@ namespace face_swap
 			cropped_src, cropped_src_seg, m_source_bbox))
 			return false;
 
+        cv::imwrite("C:\\face_swap\\face_swap\\build\\install\\data\\images\\bbai5a\\cropped_src.png", cropped_src);
+
 		// Preprocess target image
 		std::vector<cv::Point> cropped_tgt_landmarks;
 		cv::Mat cropped_tgt, cropped_tgt_seg;
@@ -235,7 +237,9 @@ namespace face_swap
 			cropped_tgt, cropped_tgt_seg, m_target_bbox))
 			return false;
 
-		// Check if horizontal flip is required
+        cv::imwrite("C:\\face_swap\\face_swap\\build\\install\\data\\images\\bbai5a\\cropped_tgt.png", cropped_tgt);
+        
+        // Check if horizontal flip is required
 		float src_angle = sfl::getFaceApproxHorAngle(cropped_src_landmarks);
 		float tgt_angle = sfl::getFaceApproxHorAngle(cropped_tgt_landmarks);
 		if ((src_angle * tgt_angle) < 0 && std::abs(src_angle - tgt_angle) > (CV_PI / 18.0f))
@@ -342,20 +346,73 @@ namespace face_swap
 
         }
 
-		// Initialize renderer
 		m_face_renderer->init(cropped_tgt.cols, cropped_tgt.rows);
 		m_face_renderer->setProjection(m_K.at<float>(4));
         generateMappings();
         generateAbsoluteMappings();
         dumpMappings();
         dumpAbsoluteMappings();
+        
+        // Apply the absolute mapping on src img: W(I1).
+        applyMapping();
+
+        cv::Mat pow_img_rgb;
+        cv::Mat diff_img_rgb_float;
+        cv::Mat diff_img_rgb = cv::max(m_target_img, m_W_i1) - cv::min(m_target_img, m_W_i1);
+        std::cout << diff_img_rgb.type() << std::endl;
+        diff_img_rgb = diff_img_rgb.mul(m_W_mask);
+        diff_img_rgb.convertTo(diff_img_rgb_float, CV_32F);
+        cv::pow(diff_img_rgb_float, 2, pow_img_rgb);
+        m_score = cv::mean(pow_img_rgb);
+        
+        cv::Mat diff_img_grayscale;
+        cv::cvtColor(diff_img_rgb, diff_img_grayscale, cv::COLOR_RGB2GRAY);
+        std::string diff_img_grayscale_path = "diff_img_grayscale.jpg";
+        std::string diff_img_rgb_path = "diff_img_rgb.jpg";
+        cv::imwrite(diff_img_grayscale_path, diff_img_grayscale);
+        cv::imwrite(diff_img_rgb_path, diff_img_rgb);
+
         dumpStats();
+
         /*paintMappings();*/
+
+        // Initialize renderer
+        m_dst_mesh.tex = m_tex;
         m_face_renderer->setMesh(m_dst_mesh);
 
 
 		return true;
 	}
+
+    void FaceSwap::applyMapping()
+    {
+        CV_Assert(m_source_img.type() == CV_8UC3);
+        //m_W_i1 = m_source_img.clone();
+        m_W_i1 = cv::Mat::zeros(m_source_img.size(), m_source_img.type());
+        m_W_mask = cv::Mat::zeros(m_source_img.size(), m_source_img.type());
+        const uchar mask_vals[] = {1, 1, 1};
+        for (const auto& pointsPair : m_absolutePixelMappings)
+        {
+            const uchar* src_pixel = m_source_img.at<unsigned char[3]>(pointsPair.first.x, pointsPair.first.y);
+            for (const auto& targetPoints : pointsPair.second)
+            {
+                uchar* dst_pixel = m_W_i1.at<unsigned char[3]>(targetPoints.x, targetPoints.y);
+                uchar* dst_mask_pixel = m_W_mask.at<unsigned char[3]>(targetPoints.x, targetPoints.y);
+                // TODO: there must be a better way of copying pixels!
+                memcpy(dst_pixel, src_pixel, sizeof(unsigned char[3]));
+                
+                // Build target mask
+                memcpy(dst_mask_pixel, mask_vals, sizeof(mask_vals));
+
+                //pow(diff_image_rgb .* dst_mask_pixel);
+            }
+        }
+
+        std::string w_i1_path = "w_i1.jpg";
+        cv::imwrite(w_i1_path, m_W_i1);
+
+        auto diff_image = m_W_i1(m_source_bbox) - m_source_img(m_source_bbox);
+    }
 
     static void findActivePixels(const cv::Mat& mat, std::vector<CvPoint>& points)
     {
@@ -436,12 +493,52 @@ namespace face_swap
         std::cout << "Dumping mappings to: " << path << std::endl;
         file << std::string("Source Point, Target Points") << std::endl;
 
+        int i = 0;
+        int size = m_absolutePixelMappings.size();
+        bool draw_on_target = false;
+        //for (const auto& pointsPair : m_absolutePixelMappings)
+        //{
+        //    if (!draw_on_target && i == size / 2) {
+        //        draw_green_pixel(
+        //            "C:\\face_swap\\face_swap\\build\\install\\data\\images\\bbai5a\\001.png",
+        //            "C:\\face_swap\\face_swap\\build\\install\\data\\images\\bbai5a\\green_pixel_src.png",
+        //            pointsPair.first.x,
+        //            pointsPair.first.y);
+        //        draw_on_target = true;
+        //    }
+        //    file << pointsPair.first.x << "," << pointsPair.first.y << " ";
+        //    for (const auto& targetPoints : pointsPair.second)
+        //    {
+        //        if (draw_on_target) {
+        //            draw_green_pixel(
+        //                "C:\\face_swap\\face_swap\\build\\install\\data\\images\\bbai5a\\002.png",
+        //                "C:\\face_swap\\face_swap\\build\\install\\data\\images\\bbai5a\\green_pixel_dst.png",
+        //                targetPoints.x,
+        //                targetPoints.y);
+        //            draw_on_target = false;
+        //        }
+        //        file << targetPoints.x << ","
+        //            << targetPoints.y << " ";
+        //    }
+        //    file << std::endl;
+        //    i++;
+        //}
         //std::cout << "Mappings of points:"
         //          << std::endl
         //          << "========================="
         //          << std::endl;
         for (const auto& pointsPair : m_pixelMappings)
         {
+            if (!draw_on_target && i == size / 2) {
+                draw_green_pixel(
+                    "C:\\face_swap\\face_swap\\build\\install\\data\\images\\bbai5a\\cropped_src.png",
+                    "C:\\face_swap\\face_swap\\build\\install\\data\\images\\bbai5a\\green_pixel_cropped_src.png",
+                    pointsPair.first.x,
+                    pointsPair.first.y);
+                draw_on_target = true;
+            }
+
+
             file << pointsPair.first.x << "," << pointsPair.first.y << " ";
             //std::cout << "Source: (" << pointsPair.first.x
             //          << "," << pointsPair.first.y << "): ";
@@ -449,10 +546,19 @@ namespace face_swap
             {
                 file << targetPoints.x << ","
                      << targetPoints.y << " ";
+                if (draw_on_target) {
+                    draw_green_pixel(
+                        "C:\\face_swap\\face_swap\\build\\install\\data\\images\\bbai5a\\cropped_tgt.png",
+                        "C:\\face_swap\\face_swap\\build\\install\\data\\images\\bbai5a\\green_pixel_cropped_tgt.png",
+                        targetPoints.x,
+                        targetPoints.y);
+                    draw_on_target = false;
+                }
                 //std::cout << "(" << targetPoints.x
                 //          << "," << targetPoints.y << "), ";
             }
             file << std::endl;
+            i++;
             //std::cout << std::endl;
         }
     }
@@ -468,15 +574,35 @@ namespace face_swap
         std::cout << "Dumping absolute mappings to: " << path << std::endl;
         file << std::string("Source Point, Target Points") << std::endl;
 
+        int i = 0;
+        int size = m_absolutePixelMappings.size();
+        bool draw_on_target = false;
         for (const auto& pointsPair : m_absolutePixelMappings)
         {
+            if (!draw_on_target && i == size / 2) {
+                draw_green_pixel(
+                    "C:\\face_swap\\face_swap\\build\\install\\data\\images\\bbai5a\\001.png",
+                    "C:\\face_swap\\face_swap\\build\\install\\data\\images\\bbai5a\\green_pixel_src.png",
+                    pointsPair.first.x,
+                    pointsPair.first.y);
+                draw_on_target = true;
+            }
             file << pointsPair.first.x << "," << pointsPair.first.y << " ";
             for (const auto& targetPoints : pointsPair.second)
             {
+                if (draw_on_target) {
+                    draw_green_pixel(
+                        "C:\\face_swap\\face_swap\\build\\install\\data\\images\\bbai5a\\002.png",
+                        "C:\\face_swap\\face_swap\\build\\install\\data\\images\\bbai5a\\green_pixel_dst.png",
+                        targetPoints.x,
+                        targetPoints.y);
+                    draw_on_target = false;
+                }
                 file << targetPoints.x << ","
                      << targetPoints.y << " ";
             }
             file << std::endl;
+            i++;
         }
     }
 
@@ -495,10 +621,21 @@ namespace face_swap
         file << "Percentage of mapped pixels: " << mappedPercentage * 100 << "%" << std::endl;
         file << "Source bounding box "
              << "x = " << m_source_bbox.x << ", "
-             << "y = " << m_source_bbox.y << std::endl;
+             << "y = " << m_source_bbox.y << ", "
+             << "width = " << m_source_bbox.width << ", "
+             << "height = " << m_source_bbox.height << std::endl;
         file << "Target bounding box "
              << "x = " << m_target_bbox.x << ", "
-             << "y = " << m_target_bbox.y << std::endl;
+             << "y = " << m_target_bbox.y << ", "
+             << "width = " << m_target_bbox.width << ", "
+             << "height = " << m_target_bbox.height << std::endl;
+        file << "m_score : "
+            << "0 : " << m_score.val[0] << ", "
+            << "1 : " << m_score.val[1] << ", "
+            << "2 : " << m_score.val[2] << std::endl;
+        file << "Score Avg : "
+            << ((m_score.val[0] + m_score.val[1] + m_score.val[2]) / 3)
+            << std::endl;
     }
 
     void FaceSwap::generateAbsoluteMappings()
@@ -508,15 +645,16 @@ namespace face_swap
 
         for (const auto& pointsPair : m_pixelMappings)
         {
-            int absSrcX = pointsPair.first.x + m_source_bbox.x;
-            int absSrcY = pointsPair.first.y + m_source_bbox.y;
+            // TODO: understand why we add y and not x
+            int absSrcX = pointsPair.first.x + m_source_bbox.y;
+            int absSrcY = pointsPair.first.y + m_source_bbox.x;
 
             std::vector<CvPoint> points;
 
             for (const auto& targetPoints : pointsPair.second)
             {
-                int absDstX = targetPoints.x + m_target_bbox.x;
-                int absDstY = targetPoints.y + m_target_bbox.y;
+                int absDstX = targetPoints.x + m_target_bbox.y;
+                int absDstY = targetPoints.y + m_target_bbox.x;
                 points.push_back(CvPoint(absDstX, absDstY));
             }
 
@@ -591,7 +729,19 @@ namespace face_swap
         cv::Mat rendered_img;
         m_face_renderer->render(m_vecR, m_vecT);
         m_face_renderer->getFrameBuffer(rendered_img);
-        
+
+        // 1) Subtract W(I1) - I2
+        // min value is -255 0   - 255
+        // max value is +255 255 - 0
+        // TODO: need to do range mapping: ((value - min) / (max - min)) * 255
+        cv::Mat diff_image_rgb = rendered_img - m_W_i1;
+
+        //cv::normalize(0, 255, diff_image_rgb, MINMAX)
+
+        // 2) Convert (RGB) diff image to grayscale
+        //cv::Mat diff_image_grayscale;
+        //cv::cvtColor(diff_image_rgb, diff_image_grayscale, cv::COLOR_RGB2GRAY);
+
         /*uchar* ren_data = rendered_img.data;*/
         //CV_Assert(rendered_img.type() == CV_8UC3);
         //for (int r = 0; r < rendered_img.rows; r++) {

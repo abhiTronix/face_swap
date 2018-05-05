@@ -73,11 +73,15 @@ namespace face_swap
         typedef std::pair<CvPoint, std::vector<CvPoint>> PixelsPair;
         std::vector<PixelsPair> m_pixelMappings;
         std::vector<PixelsPair> m_absolutePixelMappings;
+        cv::Mat m_W_i1;
+        cv::Mat m_W_mask;
+        cv::Scalar m_score;
 
-        void FaceSwap::dumpAbsoluteMappings();
-        void FaceSwap::dumpMappings();
-        void FaceSwap::dumpStats();
-        void FaceSwap::paintMappings();
+        void dumpAbsoluteMappings();
+        void dumpMappings();
+        void dumpStats();
+        void paintMappings();
+        void applyMapping();
 
         /* Generates mappings of all face pixels from source image
            into their location on the target image.

@@ -1,0 +1,2 @@
+set PATH=C:\Users\ocohen11\.caffe\dependencies\libraries_v140_x64_py27_1.1.0\libraries\bin;C:\Users\ocohen11\.caffe\dependencies\libraries_v140_x64_py27_1.1.0\libraries\x64\vc14\bin;%PATH%
+REM face_swap_image.exe C:\face_swap\face_swap\build\install\bin\absolute_mappings.txt C:\face_swap\automation\VID_20180203_205348\stargan_results\fake_frames\021_fake.png C:\face_swap\automation\VID_20180203_205348\stargan_results\fake_frames\022_fake.png
