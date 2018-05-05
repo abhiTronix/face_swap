@@ -5,7 +5,8 @@
 #include <opencv2/calib3d.hpp>
 #include <opencv2/imgproc.hpp>
 #include <opencv2/highgui.hpp>
-#include <Eigen/SparseLU>
+#include "C:\face_swap\eigen-eigen-5a0156e40feb\Eigen\SparseLU"
+//#include <Eigen/SparseLU>
 //#include <Eigen/SPQRSupport>
 #include <omp.h>
 

@@ -15,6 +15,8 @@
 // face_seg
 #include <face_seg/face_seg.h>
 
+#include <vector>
+
 namespace face_swap
 {
     class FaceSwap
@@ -67,6 +69,18 @@ namespace face_swap
 
 		bool setImages(const cv::Mat& src, const cv::Mat& tgt, 
 			const cv::Mat& src_seg = cv::Mat(), const cv::Mat& tgt_seg = cv::Mat());
+
+        typedef std::pair<CvPoint, std::vector<CvPoint>> pixelsPair;
+        std::vector<pixelsPair> m_pixelMappings;
+
+        void FaceSwap::dumpMappings();
+        void FaceSwap::dumpStats();
+        void FaceSwap::paintMappings();
+
+        /* Generates mappings of all face pixels from source image
+           into their location on the target image.
+        */
+        void generateMappings();
 
 		/**	Transfer the face from the source image onto the face in the target image.
 		*/
@@ -166,10 +180,21 @@ namespace face_swap
 
         Mesh m_src_mesh, m_dst_mesh;
         cv::Mat m_vecR, m_vecT, m_K;
-        cv::Mat m_tex, m_uv;
+        cv::Mat m_tex, m_uv;    /* m_tex is source image cropped. */
         cv::Mat m_tgt_cropped_img, m_tgt_cropped_seg;
         cv::Mat m_target_img, m_target_seg;
         cv::Rect m_target_bbox;
+        cv::Rect m_source_bbox;
+        size_t m_tex_num_white_pixels; /* number of active pixels in the cropped image */
+
+        struct PixelMap
+        {
+            int coords[2];
+            bool moved;
+        };
+
+        // alignment matrix
+        cv::Mat m_src_to_dst;
 
         /// Debug ///
         cv::Mat m_source_img;

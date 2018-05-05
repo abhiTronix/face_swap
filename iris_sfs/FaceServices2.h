@@ -5,7 +5,8 @@
 #include "FImRenderer.h"
 #include "BaselFaceEstimator.h"
 #include "RenderModel.h"
-#include <Eigen/Sparse>
+#include "C:\face_swap\eigen-eigen-5a0156e40feb\Eigen\Sparse"
+//#include <Eigen/Sparse>
 
 //using namespace std;
 //using namespace cv;

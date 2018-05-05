@@ -26,7 +26,9 @@ target_include_directories(face_swap PUBLIC
 	${face_segmentation_INCLUDE_DIRS}
 	${Caffe_INCLUDE_DIRS}
 	${HDF5_INCLUDE_DIRS}
+	C:/face_swap/caffe/build/install/include
 )
+
 target_link_libraries(face_swap PUBLIC
 	cv_gl
 	iris_sfs

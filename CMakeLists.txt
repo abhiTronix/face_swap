@@ -1,4 +1,7 @@
 cmake_minimum_required(VERSION 3.4)
+add_definitions(-D_USE_MATH_DEFINES)
+
+
 project(face_swap)
 
 # Set version
@@ -26,7 +29,7 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
 # Optional 3rd party components
 # ===================================================
-option(WITH_BOOST_STATIC "Boost static libraries" ON)
+option(WITH_BOOST_STATIC "Boost static libraries" OFF)
 option(WITH_QT "Qt" ON)
 
 # Build components
@@ -64,9 +67,10 @@ find_package(dlib REQUIRED)
 find_package(Caffe REQUIRED)
 
 # Qt
-if(WITH_QT)
-	find_package(Qt5Widgets)
-endif()
+find_package(Qt5Widgets REQUIRED)
+# if(WITH_QT)
+	# find_package(Qt5Widgets REQUIRED)
+# endif()
 
 # HDF5
 if(MSVC)
@@ -83,7 +87,8 @@ endif()
 find_package(HDF5 REQUIRED CXX)
 
 # Eigen
-find_package(Eigen3 REQUIRED)
+set(Eigen_INCLUDE_DIR C:/face_swap/eigen-eigen-5a0156e40feb)
+# find_package(Eigen3 REQUIRED)
 
 # OpenGL
 find_package(OpenGL REQUIRED)

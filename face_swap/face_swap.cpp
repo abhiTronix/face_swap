@@ -179,18 +179,53 @@ namespace face_swap
 		std::swap(landmarks[67], landmarks[65]);
 	}
 
+    void draw_green_pixel(
+        const std::string& input_image,
+        const std::string& output_image,
+        int row, int col)
+    {
+        cv::Mat img = cv::imread(input_image);
+
+        for (int r = row - 1; r <= row + 1; r++)
+        {
+            for (int c = col - 1; c <= col + 1; c++)
+            {
+                // the loop below assumes that the image
+                // is a 8-bit 3-channel. check it.
+                CV_Assert(img.type() == CV_8UC3);
+
+                uchar* data = img.at<unsigned char[3]>(r, c);
+                //enum { BLUE, GREEN, RED };
+                *data++ = 0;
+                *data++ = 255;
+                *data++ = 0;
+            }
+
+        }
+        cv::imwrite(output_image, img);
+    }
+
 	bool FaceSwap::setImages(const cv::Mat& src, const cv::Mat& tgt,
 		const cv::Mat& src_seg, const cv::Mat& tgt_seg)
 	{
 		m_source_img = src;
 		m_target_img = tgt;
 		m_target_seg = tgt_seg;
+#if 0
+        m_src_to_dst = cv::Mat(m_source_img.size(), CV_16UC3, 0); /* std::numeric_limits<unsigned short>::max()); */
+        for (int r = 0; r < m_src_to_dst.rows; r++) {
+            for (int c = 0; c < m_src_to_dst.cols; c++) {
+                auto elem = m_src_to_dst.at<unsigned short[3]>(r, c);
+                elem[0] = r; elem[1] = c;
+            }
+        }
+#endif           
 
 		// Preprocess source image
 		std::vector<cv::Point> cropped_src_landmarks;
 		cv::Mat cropped_src, cropped_src_seg;
 		if (!preprocessImages(src, src_seg, m_src_landmarks, cropped_src_landmarks,
-			cropped_src, cropped_src_seg))
+			cropped_src, cropped_src_seg, m_source_bbox))
 			return false;
 
 		// Preprocess target image
@@ -212,6 +247,17 @@ namespace face_swap
 
 			// Horizontal flip the source landmarks
 			horFlipLandmarks(cropped_src_landmarks, cropped_src.cols);
+
+            // Flip pixels in m_src_to_dst
+            //cv::flip(m_src_to_dst(m_source_bbox), m_src_to_dst(m_source_bbox), 1);
+            //auto cropped_pixels = m_src_to_dst(m_source_bbox);
+            //for (int r = 0; r < cropped_pixels.rows; r++) {
+            //    for (int c = 0; c < cropped_pixels.cols; c++) {
+            //        auto elem = cropped_pixels.at<unsigned short[3]>(r, c);
+            //        elem[2] = 1;
+            //    }
+            //}
+
 		}
 
 		// If source segmentation was not specified and we have a segmentation model then
@@ -250,6 +296,9 @@ namespace face_swap
 			generateTexture(m_src_mesh, cropped_src, cropped_src_seg, vecR, vecT, K,
 				m_tex, m_uv);
 
+            boost::filesystem::path out_file_path = "c:\\face_swap\\img_cropped.jpg";
+            cv::imwrite(out_file_path.string(), cropped_src);
+
 			/// Debug ///
 			m_src_cropped_img = cropped_src;
 			m_src_cropped_seg = cropped_src_seg;
@@ -261,25 +310,225 @@ namespace face_swap
 		}
 		
 		// Calculate target coefficients and pose
-		{
-			cv::Mat shape_coefficients, tex_coefficients, expr_coefficients;
-			m_cnn_3dmm_expr->process(cropped_tgt, cropped_tgt_landmarks, shape_coefficients,
-				tex_coefficients, expr_coefficients, m_vecR, m_vecT, m_K);
+        {
+            cv::Mat shape_coefficients, tex_coefficients, expr_coefficients;
+            m_cnn_3dmm_expr->process(cropped_tgt, cropped_tgt_landmarks, shape_coefficients,
+                tex_coefficients, expr_coefficients, m_vecR, m_vecT, m_K);
 
-			// Create target mesh
-			m_dst_mesh = m_basel_3dmm->sample(shape_coefficients, tex_coefficients,
-				expr_coefficients);
-			m_dst_mesh.tex = m_tex;
-			m_dst_mesh.uv = m_uv;
-		}
+            // Create target mesh
+            m_dst_mesh = m_basel_3dmm->sample(shape_coefficients, tex_coefficients,
+                expr_coefficients);
+
+            //int row = 210;
+            //int col = 165;
+
+            //CV_Assert(m_tex.type() == CV_8UC4);
+            //m_tex = cv::Mat::zeros(m_tex.size(), m_tex.type());
+            //CV_Assert(m_tex.type() == CV_8UC4);
+            //unsigned char* data = m_tex.at<unsigned char[4]>(row, col);
+            //*data++ = 255;
+            //*data++ = 255;
+            //*data++ = 255;
+            //*data++ = 255;
+
+            //draw_green_pixel(
+            //    "C:\\face_swap\\pics\\brad.jpg",
+            //    "C:\\face_swap\\pics\\brad_green.jpg",
+            //    row,
+            //    col);
+
+            m_dst_mesh.tex = m_tex;
+            m_dst_mesh.uv = m_uv;
+
+        }
 
 		// Initialize renderer
 		m_face_renderer->init(cropped_tgt.cols, cropped_tgt.rows);
 		m_face_renderer->setProjection(m_K.at<float>(4));
-		m_face_renderer->setMesh(m_dst_mesh);
+        generateMappings();
+        dumpMappings();
+        dumpStats();
+        /*paintMappings();*/
+        m_face_renderer->setMesh(m_dst_mesh);
+
 
 		return true;
 	}
+
+    static void findActivePixels(const cv::Mat& mat, std::vector<CvPoint>& points)
+    {
+        CV_Assert(mat.type() == CV_8UC3);
+
+        for (int r = 0; r < mat.rows; r++) {
+            for (int c = 0; c < mat.cols; c++) {
+                const uchar* ren_data = mat.at<unsigned char[3]>(r, c);
+                unsigned char cb = *ren_data++;
+                unsigned char cg = *ren_data++;
+                unsigned char cr = *ren_data++;
+                if (!(cb == 0 && cg == 0 && cr == 0)) {
+                    points.push_back(cv::Point(r, c));
+                    //std::cout << "Target 1: row: " << r << " col: " << c << std::endl;
+                }
+            }
+        }
+    }
+
+    void FaceSwap::paintMappings()
+    {
+        std::cout << "Mapping paintings:"
+            << std::endl
+            << "========================="
+            << std::endl;
+        for (const auto& pointsPair : m_pixelMappings)
+        {
+            std::cout << "Source: (" << pointsPair.first.x
+                << "," << pointsPair.first.y << "): ";
+
+            std::stringstream ss2;
+            ss2 << "C:\\face_swap\\pics\\brad_"
+                << pointsPair.first.x  << "_"
+                << pointsPair.first.y << ".jpg";
+            std::string img_path2 = ss2.str();
+            //cv::Mat img = cv::imread("C:\\face_swap\\pics\\brad.jpg");
+            cv::Mat img = cv::imread("C:\\face_swap\\pics\\img_cropped.jpg");
+            cv::imwrite(img_path2, img);
+
+            draw_green_pixel(
+                img_path2,
+                img_path2,
+                pointsPair.first.x,
+                pointsPair.first.y);
+
+
+            std::stringstream ss;
+            ss << "C:\\face_swap\\pics\\rendered_"
+               << pointsPair.first.x  << "_"
+               << pointsPair.first.y << ".jpg";
+
+            std::string img_path = ss.str();
+
+            img = cv::imread("C:\\face_swap\\pics\\rendered.jpg");
+            cv::imwrite(img_path, img);
+
+            for (const auto& targetPoints : pointsPair.second)
+            {
+                int x = targetPoints.x, y = targetPoints.y;
+                draw_green_pixel(
+                    img_path,
+                    img_path,
+                    x,
+                    y);
+            }
+
+            std::cout << std::endl;
+        }
+    }
+
+    void FaceSwap::dumpMappings()
+    {
+        const char* path = "mappings.txt";
+        std::ofstream file(path, std::ios::out);
+        if (!file.is_open()) {
+            throw std::runtime_error(std::string("unable to open file: ") + path);
+        }
+        std::cout << "Dumping mappings to: " << path << std::endl;
+        file << std::string("Source Point, Target Points") << std::endl;
+
+        //std::cout << "Mappings of points:"
+        //          << std::endl
+        //          << "========================="
+        //          << std::endl;
+        for (const auto& pointsPair : m_pixelMappings)
+        {
+            file << pointsPair.first.x << "," << pointsPair.first.y << " ";
+            //std::cout << "Source: (" << pointsPair.first.x
+            //          << "," << pointsPair.first.y << "): ";
+            for (const auto& targetPoints : pointsPair.second)
+            {
+                file << targetPoints.x << ","
+                     << targetPoints.y << " ";
+                //std::cout << "(" << targetPoints.x
+                //          << "," << targetPoints.y << "), ";
+            }
+            file << std::endl;
+            //std::cout << std::endl;
+        }
+    }
+
+    void FaceSwap::dumpStats()
+    {
+        const char* path = "statistics.txt";
+        std::ofstream file(path, std::ios::out);
+        if (!file.is_open()) {
+            throw std::runtime_error(std::string("unable to open file: ") + path);
+        }
+        size_t numPixels = m_tex_num_white_pixels;
+        float mappedPercentage = (float)m_pixelMappings.size() / numPixels;
+        std::cout << "Dumping statistics to: " << path << std::endl;
+        file << "Total number of pixels:" << numPixels << std::endl;
+        file << "Total number of mapped pixels:" << m_pixelMappings.size() << std::endl;
+        file << "Percentage of mapped pixels: " << mappedPercentage * 100 << "%" << std::endl;
+    }
+
+    void FaceSwap::generateMappings()
+    {
+        CV_Assert(m_tex.type() == CV_8UC4);
+
+        std::vector<cv::Mat> channels;
+        cv::split(m_tex, channels);
+        CV_Assert(channels.size() == 4);
+
+        cv::Mat tex_seg = channels.back().clone();
+        cv::Mat cur_tex;
+
+        m_tex_num_white_pixels = 0;
+
+        // 1. Iterate over all face pixels in the source images
+        CV_Assert(tex_seg.type() == CV_8UC1);
+        for (int r = 0; r < m_tex.rows; r++)
+        {
+            for (int c = 0; c < m_tex.cols; c++)
+            {
+                // Nose: Source: row: 210, col : 165
+                // Right Eyebrows: row: 163 col : 233
+                // Left Eyebrows: row: 163 col: 100
+                //if (!(r == 283 && c == 209 || 
+                //      r == 256 && c == 256 ||
+                //      r == 350 && c == 256))
+                //    continue;
+
+                if (tex_seg.at<uchar>(r, c) == 255)
+                {
+                    m_tex_num_white_pixels++;
+
+                    // 2. Set a pixel as the only active pixel
+                    cur_tex = cv::Mat::zeros(m_tex.size(), m_tex.type());
+                    unsigned char* data = cur_tex.at<unsigned char[4]>(r, c);
+                    *data++ = 255;
+                    *data++ = 255;
+                    *data++ = 255;
+                    *data++ = 255;
+
+                    // Prepare mesh
+                    m_dst_mesh.tex = cur_tex;
+                    m_face_renderer->setMesh(m_dst_mesh);
+
+                    // Render
+                    cv::Mat rendered_img;
+                    m_face_renderer->render(m_vecR, m_vecT);
+                    m_face_renderer->getFrameBuffer(rendered_img);
+
+                    std::vector<CvPoint> points;
+                    findActivePixels(rendered_img, points);
+
+                    // 3. Retrieve corresponding pixels in the target image
+                    if (points.size() > 0) {
+                        m_pixelMappings.push_back(std::make_pair(CvPoint(r, c), points));
+                    }
+                }
+            }
+        }
+    }
 
     cv::Mat FaceSwap::swap()
     {
@@ -287,12 +536,60 @@ namespace face_swap
         cv::Mat rendered_img;
         m_face_renderer->render(m_vecR, m_vecT);
         m_face_renderer->getFrameBuffer(rendered_img);
+        
+        /*uchar* ren_data = rendered_img.data;*/
+        //CV_Assert(rendered_img.type() == CV_8UC3);
+        //for (int r = 0; r < rendered_img.rows; r++) {
+        //    for (int c = 0; c < rendered_img.cols; c++) {
+        //        uchar* ren_data = rendered_img.at<unsigned char[3]>(r, c);
+        //        unsigned char cb = *ren_data++;
+        //        unsigned char cg = *ren_data++;
+        //        unsigned char cr = *ren_data++;
+        //        if (!(cb == 0 && cg == 0 && cr == 0)) {
+        //            std::cout << "Target 1: row: " << r << " col: " << c << std::endl;
+        //        }
+        //    }
+        //}
 
+        std::cout << "rendered: " << rendered_img.size() << std::endl;
+
+        boost::filesystem::path out_file_path = "c:\\face_swap\\rendered.jpg";
+        cv::imwrite(out_file_path.string(), rendered_img);
+
+        //draw_green_pixel(
+        //    "C:\\face_swap\\pics\\rendered.jpg",
+        //    "C:\\face_swap\\pics\\rendered_green.jpg",
+        //    155,
+        //    156);
+        
         // Blend images
         cv::Mat tgt_rendered_img = cv::Mat::zeros(m_target_img.size(), CV_8UC3);
         rendered_img.copyTo(tgt_rendered_img(m_target_bbox));
 
         m_tgt_rendered_img = tgt_rendered_img;  // For debug
+
+        /*uchar* ren_data = rendered_img.data;*/
+        //CV_Assert(tgt_rendered_img.type() == CV_8UC3);
+        //for (int r = 0; r < tgt_rendered_img.rows; r++) {
+        //    for (int c = 0; c < tgt_rendered_img.cols; c++) {
+        //        uchar* ren_data = tgt_rendered_img.at<unsigned char[3]>(r, c);
+        //        unsigned char cb = *ren_data++;
+        //        unsigned char cg = *ren_data++;
+        //        unsigned char cr = *ren_data++;
+        //        if (!(cb == 0 && cg == 0 && cr == 0)) {
+        //            std::cout << "Target 2: row: " << r << " col: " << c << std::endl;
+        //        }
+        //    }
+        //}
+
+        //draw_green_pixel(
+        //    "C:\\face_swap\\pics\\tgt_rendered_img.jpg",
+        //    "C:\\face_swap\\pics\\tgt_rendered_img_green.jpg",
+        //    155,
+        //    167);
+
+        //out_file_path = "c:\\face_swap\\tgt_rendered_img.jpg";
+        //cv::imwrite(out_file_path.string(), tgt_rendered_img);
 
         return blend(tgt_rendered_img, m_target_img, m_target_seg);
     }
@@ -366,6 +663,14 @@ namespace face_swap
             cv::split(img, channels);
             channels.push_back(seg);
             cv::merge(channels, tex);
+            
+            boost::filesystem::path out_tex = "c:\\face_swap\\img.jpg";
+            cv::imwrite(out_tex.string(), img);
+            out_tex = "c:\\face_swap\\seg.jpg";
+            cv::imwrite(out_tex.string(), seg);
+            out_tex = "c:\\face_swap\\tex_merged.jpg";
+            cv::imwrite(out_tex.string(), tex);
+
         }
         else tex = img_scaled; 
 

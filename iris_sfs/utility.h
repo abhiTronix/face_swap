@@ -4,7 +4,8 @@
 #include "highgui.h"
 #include <string>
 #include <fstream>
-#include <Eigen/Dense>
+#include "C:\face_swap\eigen-eigen-5a0156e40feb\Eigen\Dense"
+//#include <Eigen/Dense>
 
 int splittext(char* str, char** pos);
 
