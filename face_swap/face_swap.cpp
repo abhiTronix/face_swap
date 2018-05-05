@@ -346,7 +346,9 @@ namespace face_swap
 		m_face_renderer->init(cropped_tgt.cols, cropped_tgt.rows);
 		m_face_renderer->setProjection(m_K.at<float>(4));
         generateMappings();
+        generateAbsoluteMappings();
         dumpMappings();
+        dumpAbsoluteMappings();
         dumpStats();
         /*paintMappings();*/
         m_face_renderer->setMesh(m_dst_mesh);
@@ -455,6 +457,29 @@ namespace face_swap
         }
     }
 
+    void FaceSwap::dumpAbsoluteMappings()
+    {
+        const char* path = "absolute_mappings.txt";
+        std::ofstream file(path, std::ios::out);
+        if (!file.is_open()) {
+            throw std::runtime_error(std::string("unable to open file: ") + path);
+        }
+
+        std::cout << "Dumping absolute mappings to: " << path << std::endl;
+        file << std::string("Source Point, Target Points") << std::endl;
+
+        for (const auto& pointsPair : m_absolutePixelMappings)
+        {
+            file << pointsPair.first.x << "," << pointsPair.first.y << " ";
+            for (const auto& targetPoints : pointsPair.second)
+            {
+                file << targetPoints.x << ","
+                     << targetPoints.y << " ";
+            }
+            file << std::endl;
+        }
+    }
+
     void FaceSwap::dumpStats()
     {
         const char* path = "statistics.txt";
@@ -468,6 +493,36 @@ namespace face_swap
         file << "Total number of pixels:" << numPixels << std::endl;
         file << "Total number of mapped pixels:" << m_pixelMappings.size() << std::endl;
         file << "Percentage of mapped pixels: " << mappedPercentage * 100 << "%" << std::endl;
+        file << "Source bounding box "
+             << "x = " << m_source_bbox.x << ", "
+             << "y = " << m_source_bbox.y << std::endl;
+        file << "Target bounding box "
+             << "x = " << m_target_bbox.x << ", "
+             << "y = " << m_target_bbox.y << std::endl;
+    }
+
+    void FaceSwap::generateAbsoluteMappings()
+    {
+        CV_Assert(m_pixelMappings.size() > 0 && "No mappings were found! "
+                                                "Did you call generateMappings()?");
+
+        for (const auto& pointsPair : m_pixelMappings)
+        {
+            int absSrcX = pointsPair.first.x + m_source_bbox.x;
+            int absSrcY = pointsPair.first.y + m_source_bbox.y;
+
+            std::vector<CvPoint> points;
+
+            for (const auto& targetPoints : pointsPair.second)
+            {
+                int absDstX = targetPoints.x + m_target_bbox.x;
+                int absDstY = targetPoints.y + m_target_bbox.y;
+                points.push_back(CvPoint(absDstX, absDstY));
+            }
+
+            m_absolutePixelMappings.push_back(std::make_pair(CvPoint(absSrcX, absSrcY), points));
+        }
+
     }
 
     void FaceSwap::generateMappings()

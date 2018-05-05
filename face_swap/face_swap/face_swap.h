@@ -70,9 +70,11 @@ namespace face_swap
 		bool setImages(const cv::Mat& src, const cv::Mat& tgt, 
 			const cv::Mat& src_seg = cv::Mat(), const cv::Mat& tgt_seg = cv::Mat());
 
-        typedef std::pair<CvPoint, std::vector<CvPoint>> pixelsPair;
-        std::vector<pixelsPair> m_pixelMappings;
+        typedef std::pair<CvPoint, std::vector<CvPoint>> PixelsPair;
+        std::vector<PixelsPair> m_pixelMappings;
+        std::vector<PixelsPair> m_absolutePixelMappings;
 
+        void FaceSwap::dumpAbsoluteMappings();
         void FaceSwap::dumpMappings();
         void FaceSwap::dumpStats();
         void FaceSwap::paintMappings();
@@ -81,6 +83,11 @@ namespace face_swap
            into their location on the target image.
         */
         void generateMappings();
+
+        /* Generates mappings of absolute src coordinates to dst
+           coordinates. Must be called after generateMappings().
+        */
+        void generateAbsoluteMappings();
 
 		/**	Transfer the face from the source image onto the face in the target image.
 		*/
