@@ -310,6 +310,9 @@ int main(int argc, char* argv[])
 		if (!fs.setImages(source_img, target_img, source_seg, target_seg))
 			throw std::runtime_error("Failed to find faces in one of the images!");
 
+        // TODO: This is evil!
+        //return 0;
+
         // Do face swap
         cv::Mat rendered_img = fs.swap();
         if (rendered_img.empty())

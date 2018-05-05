@@ -348,13 +348,15 @@ namespace face_swap
 
 		m_face_renderer->init(cropped_tgt.cols, cropped_tgt.rows);
 		m_face_renderer->setProjection(m_K.at<float>(4));
+        generateSourceMappings();
+#if 0
         generateMappings();
         generateAbsoluteMappings();
         dumpMappings();
         dumpAbsoluteMappings();
         
         // Apply the absolute mapping on src img: W(I1).
-        applyMapping();
+        //applyMapping();
 
         cv::Mat pow_img_rgb;
         cv::Mat diff_img_rgb_float;
@@ -373,7 +375,7 @@ namespace face_swap
         cv::imwrite(diff_img_rgb_path, diff_img_rgb);
 
         dumpStats();
-
+#endif
         /*paintMappings();*/
 
         // Initialize renderer
@@ -721,6 +723,42 @@ namespace face_swap
                 }
             }
         }
+    }
+
+    void FaceSwap::generateSourceMappings()
+    {
+        // Source texture - 255 == face pixel, 0 == background.
+        cv::Mat src_tex = cv::Mat::zeros(m_source_img.size(), CV_8UC1);
+
+        CV_Assert(m_tex.type() == CV_8UC4);
+
+        std::vector<cv::Mat> channels;
+        cv::split(m_tex, channels);
+        CV_Assert(channels.size() == 4);
+
+        cv::Mat tex_seg = channels.back().clone();
+        cv::Mat cur_tex;
+
+        // 1. Iterate over all face pixels in the source images
+        CV_Assert(tex_seg.type() == CV_8UC1);
+        for (int r = 0; r < m_tex.rows; r++)
+        {
+            for (int c = 0; c < m_tex.cols; c++)
+            {
+                if (tex_seg.at<uchar>(r, c) == 255)
+                {
+                    // 2. Get absolute pixel location.
+                    // TODO: understand why we add y and not x
+                    int absSrcX = r + m_source_bbox.y;
+                    int absSrcY = c + m_source_bbox.x;
+
+                    src_tex.at<uchar>(absSrcX, absSrcY) = 255;
+                }
+            }
+        }
+
+        // 3. Dump image
+        cv::imwrite("c:\\face_swap\\temp\\out.jpg", src_tex);
     }
 
     cv::Mat FaceSwap::swap()

@@ -83,6 +83,11 @@ namespace face_swap
         void paintMappings();
         void applyMapping();
 
+        /* Generates a texture with 1's for face pixels and 0
+           for background pixels.
+        */
+        void generateSourceMappings();
+
         /* Generates mappings of all face pixels from source image
            into their location on the target image.
         */
